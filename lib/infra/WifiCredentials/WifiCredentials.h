@@ -25,9 +25,11 @@
 namespace WifiCredentials {
 
 // Límites del estándar WiFi: SSID hasta 32 bytes, PSK hasta 63 bytes. Los
-// buffers del llamante deben incluir el '\0' final (33 y 64).
+// buffers del llamante deben incluir el '\0' final (33 y 64). El hostname mDNS
+// se limita a 32 (una etiqueta DNS cabe de sobra; en la práctica <= 24).
 constexpr size_t kSsidBufLen = 33;
 constexpr size_t kPassBufLen = 64;
+constexpr size_t kHostBufLen = 33;
 
 // load — copia el SSID/password guardados en NVS a los buffers del llamante.
 // Devuelve true solo si hay un SSID NO vacío almacenado. Si devuelve false,
@@ -35,9 +37,16 @@ constexpr size_t kPassBufLen = 64;
 // ssidCap/passCap: capacidad de cada buffer (se trunca con seguridad).
 bool load(char* ssid, size_t ssidCap, char* pass, size_t passCap);
 
-// save — persiste SSID/password en NVS. Devuelve true si se escribió.
+// save — persiste SSID/password/hostname en NVS. Devuelve true si se escribió.
 // Un ssid vacío se rechaza (devuelve false) — usar clear() para borrar.
-bool save(const char* ssid, const char* pass);
+// hostname puede ser nullptr o "" → no se toca/limpia el hostname guardado
+// (se seguirá usando el valor por defecto de secrets.h vía effectiveHostname()).
+bool save(const char* ssid, const char* pass, const char* hostname);
+
+// effectiveHostname — hostname mDNS efectivo: el guardado en NVS si hay uno no
+// vacío, si no el `fallback` (típicamente OTA_HOSTNAME de secrets.h). Siempre
+// deja `out` con una cadena válida no vacía (asume fallback no vacío).
+void effectiveHostname(char* out, size_t outCap, const char* fallback);
 
 // clear — borra las credenciales guardadas (vuelve al estado "sin configurar",
 // que hace que el firmware arranque en modo portal AP la próxima vez).

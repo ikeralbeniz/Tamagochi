@@ -16,6 +16,7 @@ namespace {
 constexpr const char* kNs       = "furbi_wifi";
 constexpr const char* kKeySsid  = "ssid";
 constexpr const char* kKeyPass  = "pass";
+constexpr const char* kKeyHost  = "host";
 }  // namespace
 
 namespace WifiCredentials {
@@ -38,7 +39,7 @@ bool load(char* ssid, size_t ssidCap, char* pass, size_t passCap) {
     return n > 0 && ssid[0] != '\0';
 }
 
-bool save(const char* ssid, const char* pass) {
+bool save(const char* ssid, const char* pass, const char* hostname) {
     if (!ssid || ssid[0] == '\0') {
         LOG_WARN("[wifi-cred] save ignorado: SSID vacio");
         return false;
@@ -53,11 +54,31 @@ bool save(const char* ssid, const char* pass) {
     // putString devuelve el nº de bytes escritos. Password NUNCA se loguea.
     bool ok = prefs.putString(kKeySsid, ssid) > 0;
     prefs.putString(kKeyPass, pass);
+    // hostname vacío/nullptr → no se guarda (se usa el default de secrets.h).
+    if (hostname && hostname[0] != '\0') {
+        prefs.putString(kKeyHost, hostname);
+    }
     prefs.end();
 
-    if (ok) LOG_INFO("[wifi-cred] credenciales guardadas en NVS para SSID=%s", ssid);
+    if (ok) LOG_INFO("[wifi-cred] credenciales guardadas en NVS para SSID=%s host=%s",
+                     ssid, (hostname && hostname[0]) ? hostname : "(default)");
     else    LOG_ERROR("[wifi-cred] fallo escribiendo SSID en NVS");
     return ok;
+}
+
+void effectiveHostname(char* out, size_t outCap, const char* fallback) {
+    if (!out || outCap == 0) return;
+    out[0] = '\0';
+
+    Preferences prefs;
+    if (prefs.begin(kNs, /*readOnly=*/true)) {
+        prefs.getString(kKeyHost, out, outCap);
+        prefs.end();
+    }
+    if (out[0] == '\0' && fallback) {
+        strncpy(out, fallback, outCap - 1);
+        out[outCap - 1] = '\0';
+    }
 }
 
 void clear() {

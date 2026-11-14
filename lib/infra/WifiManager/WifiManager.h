@@ -125,6 +125,11 @@ public:
     // configuración AP (feat/wifi-ap-provisioning). Válido tras begin().
     bool hasCredentials() const { return ssid_[0] != '\0'; }
 
+    // Hostname mDNS efectivo (SIN ".local"): el configurado desde el portal
+    // (NVS) o, si no hay, el de secrets.h (OTA_HOSTNAME). Resuelto en begin().
+    // Lo usan OTA (ArduinoOTA.setHostname) y mDNS (MDNS.begin) en main.
+    const char* hostname() const { return host_; }
+
 private:
     EventBus& bus_;
 
@@ -135,6 +140,8 @@ private:
     // que haría WiFi.begin internamente); NUNCA se loguea (rules/security.md).
     char ssid_[33] = {0};
     char pass_[64] = {0};
+    // Hostname mDNS efectivo (NVS o OTA_HOSTNAME). Resuelto en begin().
+    char host_[33] = {0};
     WifiState state_              = WifiState::Disabled;
     uint32_t  connectStartedAtMs_ = 0;
     uint32_t  disconnectAtMs_     = 0;

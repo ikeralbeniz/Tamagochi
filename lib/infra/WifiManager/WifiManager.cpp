@@ -55,6 +55,11 @@ void WifiManager::begin() {
     bool fromNvs = false;
 #if defined(ARDUINO_ARCH_ESP32)
     fromNvs = WifiCredentials::load(ssid_, sizeof(ssid_), pass_, sizeof(pass_));
+    // Hostname mDNS: el guardado en el portal (NVS) o OTA_HOSTNAME por defecto.
+    WifiCredentials::effectiveHostname(host_, sizeof(host_), OTA_HOSTNAME);
+#else
+    strncpy(host_, OTA_HOSTNAME, sizeof(host_) - 1);
+    host_[sizeof(host_) - 1] = '\0';
 #endif
     if (!fromNvs) {
         strncpy(ssid_, WIFI_SSID, sizeof(ssid_) - 1);
@@ -88,7 +93,7 @@ void WifiManager::begin() {
     // OTAManager.cpp). setSleep(false) se mantiene porque sigue siendo una
     // mejora genuina de latencia/estabilidad de red, no como "fix" de OTA.
     WiFi.setSleep(false);
-    WiFi.hostname(OTA_HOSTNAME);
+    WiFi.hostname(host_);
 
 #if defined(ARDUINO_ARCH_ESP32)
     // Fuente de verdad rápida de conectividad (ver comentario de clase en el
@@ -114,7 +119,7 @@ void WifiManager::begin() {
     lastPollMs_         = millis();
 
     // Logueamos SSID (no sensible). Password nunca se loguea (rules/security.md).
-    LOG_INFO("[wifi] conectando a SSID=%s (hostname=%s)", ssid_, OTA_HOSTNAME);
+    LOG_INFO("[wifi] conectando a SSID=%s (hostname=%s)", ssid_, host_);
 }
 
 #if defined(ARDUINO_ARCH_ESP32)
@@ -241,7 +246,7 @@ WifiInfo WifiManager::info() const {
     out.state          = state_;
     out.ssidConfigured = (ssid_[0] != '\0');
     out.ssid           = ssid_;
-    out.hostname       = OTA_HOSTNAME;
+    out.hostname       = host_;
 
     if (state_ == WifiState::Connected) {
         const IPAddress ip = WiFi.localIP();
@@ -263,7 +268,7 @@ void WifiManager::logConnected_() const {
              ssid_,
              static_cast<unsigned>(ip[0]), static_cast<unsigned>(ip[1]),
              static_cast<unsigned>(ip[2]), static_cast<unsigned>(ip[3]),
-             OTA_HOSTNAME);
+             host_);
 }
 
 // -----------------------------------------------------------------------------

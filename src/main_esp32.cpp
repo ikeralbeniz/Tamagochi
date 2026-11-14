@@ -490,12 +490,12 @@ static void onWifiStateChanged(const Event& e) {
         // antes de tocar mDNS, ver OTAManager.cpp).
         bool mdnsReady = ota.isReady();
         if (!mdnsReady) {
-            mdnsReady = MDNS.begin(OTA_HOSTNAME);
+            mdnsReady = MDNS.begin(wifi.hostname());
             if (!mdnsReady) LOG_WARN("[mdns] begin failed — continuando sin mDNS");
         }
         if (mdnsReady) {
             MDNS.addService("http", "tcp", 80);
-            LOG_INFO("[mdns] hostname=%s.local  http service registered", OTA_HOSTNAME);
+            LOG_INFO("[mdns] hostname=%s.local  http service registered", wifi.hostname());
         }
     } else {
         // Cualquier estado distinto de Connected: detener OTA y WebUI si estaban activos.

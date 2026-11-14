@@ -8,6 +8,7 @@
 #include "WifiProvisioning.h"
 #include "WifiCredentials.h"
 #include "Logger.h"
+#include "secrets.h"   // OTA_HOSTNAME: valor por defecto del hostname mDNS
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -63,6 +64,8 @@ button:disabled{opacity:.5;cursor:default}
 .msg.ok{display:block;background:#113524;border:1px solid #1f8f4e;color:#7ee2a8}
 .msg.err{display:block;background:#3a1618;border:1px solid #b03a3f;color:#ff9ea2}
 .spin{color:#8b949e;font-size:13px;padding:8px 2px}
+.hint{color:#8b949e;font-size:12px;margin-top:8px;line-height:1.4}
+.hint b{color:#c9d1d9}
 </style></head><body><div class="card">
 <h1>🐾 Furbigotty</h1>
 <p class="sub">Elige tu red WiFi y escribe la contraseña.</p>
@@ -76,13 +79,25 @@ button:disabled{opacity:.5;cursor:default}
   <input id="ssid" name="ssid" placeholder="Toca una red o escríbela" autocomplete="off">
   <div class="lbl">Contraseña</div>
   <input id="pass" name="pass" type="password" placeholder="Contraseña de la red" autocomplete="off">
+  <div class="lbl">Nombre en la red (mDNS)</div>
+  <input id="host" name="host" placeholder="tamagotchi" autocomplete="off"
+         maxlength="24" pattern="[A-Za-z0-9-]+">
+  <div class="hint">Accederás al dispositivo como <b><span id="hp">tamagotchi</span>.local</b>. Solo letras, números y guiones.</div>
   <button id="save" type="submit">Guardar y conectar</button>
 </form>
 <div id="msg" class="msg"></div>
 </div>
 <script>
 var listEl=document.getElementById('list'),ssidEl=document.getElementById('ssid'),
-    msgEl=document.getElementById('msg'),selName=null;
+    msgEl=document.getElementById('msg'),hostEl=document.getElementById('host'),
+    hpEl=document.getElementById('hp'),selName=null;
+// Prefijar el hostname actual (configurado o por defecto) y actualizar la
+// vista previa "<nombre>.local" al escribir.
+fetch('/cfg').then(function(r){return r.json();}).then(function(j){
+  if(j.host){hostEl.value=j.host;hpEl.textContent=j.host;}
+}).catch(function(){});
+hostEl.addEventListener('input',function(){
+  hpEl.textContent=(hostEl.value||'tamagotchi');});
 function bars(rssi){var q=Math.max(0,Math.min(4,Math.round((rssi+100)/12)));
   var s='<span class="bars">';for(var i=0;i<4;i++)s+='<i class="'+(i<q?'on':'')+'" style="height:'+(5+i*3)+'px"></i>';return s+'</span>';}
 function esc(s){return s.replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -114,7 +129,7 @@ document.getElementById('f').onsubmit=function(ev){
   ev.preventDefault();
   if(!ssidEl.value){msgEl.className='msg err';msgEl.textContent='Elige o escribe una red.';return;}
   var btn=document.getElementById('save');btn.disabled=true;btn.textContent='Guardando…';
-  var body=new URLSearchParams();body.set('ssid',ssidEl.value);body.set('pass',document.getElementById('pass').value);
+  var body=new URLSearchParams();body.set('ssid',ssidEl.value);body.set('pass',document.getElementById('pass').value);body.set('host',hostEl.value);
   fetch('/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString()})
    .then(function(r){return r.json();}).then(function(j){
      if(j.ok){msgEl.className='msg ok';
@@ -138,6 +153,24 @@ void appendJsonString(String& out, const String& s) {
         else out += c;
     }
     out += '"';
+}
+
+// Sanitiza un hostname a una etiqueta DNS/mDNS válida: minúsculas, solo
+// [a-z0-9-], sin guion al principio/final, máx 24 chars. Devuelve "" si tras
+// limpiar no queda nada (el llamante usa entonces el default). Escrito a `out`
+// (cap incluye el '\0').
+void sanitizeHostname(const char* in, char* out, size_t cap) {
+    size_t j = 0;
+    for (size_t i = 0; in[i] && j < cap - 1 && j < 24; ++i) {
+        char c = in[i];
+        if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');  // a minúsculas
+        bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
+        if (!ok) continue;
+        if (c == '-' && j == 0) continue;  // sin guion inicial
+        out[j++] = c;
+    }
+    while (j > 0 && out[j - 1] == '-') --j;  // sin guion final
+    out[j] = '\0';
 }
 
 }  // namespace
@@ -195,6 +228,17 @@ void WifiProvisioning::setupRoutes_() {
         req->send(200, "application/json", "{\"ok\":true}");
     });
 
+    // Config actual: hostname mDNS efectivo (NVS o OTA_HOSTNAME) para prefijar
+    // el formulario.
+    server_->on("/cfg", HTTP_GET, [](AsyncWebServerRequest* req) {
+        char host[33];
+        WifiCredentials::effectiveHostname(host, sizeof(host), OTA_HOSTNAME);
+        String body = "{\"host\":";
+        appendJsonString(body, String(host));
+        body += "}";
+        req->send(200, "application/json", body);
+    });
+
     // Guardado de credenciales. Solo copia los valores y marca savePending_;
     // la escritura en NVS y el reinicio los hace loop() (ver header).
     server_->on("/save", HTTP_POST, [this](AsyncWebServerRequest* req) {
@@ -204,11 +248,15 @@ void WifiProvisioning::setupRoutes_() {
         }
         String ssid = req->getParam("ssid", true)->value();
         String pass = req->hasParam("pass", true) ? req->getParam("pass", true)->value() : String("");
+        String host = req->hasParam("host", true) ? req->getParam("host", true)->value() : String("");
 
         strncpy(pendingSsid_, ssid.c_str(), sizeof(pendingSsid_) - 1);
         pendingSsid_[sizeof(pendingSsid_) - 1] = '\0';
         strncpy(pendingPass_, pass.c_str(), sizeof(pendingPass_) - 1);
         pendingPass_[sizeof(pendingPass_) - 1] = '\0';
+        // Hostname sanitizado a etiqueta mDNS válida. Vacío → se guarda vacío y
+        // WifiCredentials seguirá usando el default (OTA_HOSTNAME).
+        sanitizeHostname(host.c_str(), pendingHost_, sizeof(pendingHost_));
         savePending_ = true;  // loop() lo recoge (password NUNCA se loguea)
 
         String body = "{\"ok\":true,\"ssid\":";
@@ -259,7 +307,7 @@ void WifiProvisioning::loop() {
     // Guardado diferido pedido por el handler /save.
     if (savePending_) {
         savePending_ = false;
-        WifiCredentials::save(pendingSsid_, pendingPass_);
+        WifiCredentials::save(pendingSsid_, pendingPass_, pendingHost_);
         memset(pendingPass_, 0, sizeof(pendingPass_));  // no dejar la password en RAM
         LOG_INFO("[provision] credenciales guardadas — reiniciando en 1.5 s");
         rebootAtMs_ = millis() + 1500;  // margen para que la respuesta HTTP salga

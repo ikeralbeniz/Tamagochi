@@ -82,6 +82,7 @@ private:
     volatile bool savePending_   = false;
     char          pendingSsid_[33] = {0};
     char          pendingPass_[64] = {0};
+    char          pendingHost_[33] = {0};
 
     char apSsid_[33]   = {0};
     char portalIp_[16] = {0};
