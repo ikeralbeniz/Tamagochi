@@ -120,8 +120,21 @@ public:
     // para mantenerse ligero — ver comentario de includes arriba).
     bool isWifiDeadFor(uint32_t thresholdMs) const;
 
+    // true si begin() encontró credenciales (en NVS o en secrets.h). Cuando es
+    // false, state() queda Disabled y main_esp32.cpp puede arrancar el portal de
+    // configuración AP (feat/wifi-ap-provisioning). Válido tras begin().
+    bool hasCredentials() const { return ssid_[0] != '\0'; }
+
 private:
     EventBus& bus_;
+
+    // Credenciales efectivas resueltas en begin(): primero NVS (configuradas
+    // desde el portal AP), si no secrets.h. Buffers POD (SSID≤32, PSK≤63 + '\0')
+    // para no arrastrar String al header, que en esp12e no incluye Arduino.h.
+    // La password vive aquí en RAM mientras el dispositivo está encendido (igual
+    // que haría WiFi.begin internamente); NUNCA se loguea (rules/security.md).
+    char ssid_[33] = {0};
+    char pass_[64] = {0};
     WifiState state_              = WifiState::Disabled;
     uint32_t  connectStartedAtMs_ = 0;
     uint32_t  disconnectAtMs_     = 0;
