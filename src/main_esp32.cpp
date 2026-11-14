@@ -1018,9 +1018,6 @@ void setup() {
     if (!wifi.hasCredentials()) {
         provisioning.begin("Furbigotty-setup");
         provisioningMode = true;
-        // Pista en la propia pantalla del Tamagotchi (se ve al entrar en
-        // MessageView). ASCII; MessageBox sanitiza.
-        messageBox.post("Config WiFi: conecta tu movil a la red 'Furbigotty-setup'");
         LOG_INFO("[setup] modo portal AP activo — WebUI/OTA en pausa hasta configurar WiFi");
     }
 #endif
